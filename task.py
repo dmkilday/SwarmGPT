@@ -1,11 +1,12 @@
 import time
 import json
 import utils
+import functions
 
 class Task:
-    def __init__(self, client, id, title, description, agent_id, parent, dependent_upon=None, outcome=None):
+    def __init__(self, task_list, client, id, title, description, agent_id, dependent_upon=None, outcome=None):
+        self.parent = task_list
         self.client = client
-        self.parent = parent
         self.id = id
         self.title = title
         self.description = description
@@ -13,6 +14,11 @@ class Task:
         self.dependent_upon = dependent_upon
         self.outcome = outcome
         self.is_complete = False
+
+        # Add self to parent task list
+        self.parent.append(self)
+
+        print(f'Created task "{self.title}"')
 
     # Add message to the assistant thread and create a run
     def submit_message(self, assistant_id, thread, user_message):
@@ -86,33 +92,35 @@ class Task:
 
         return latest_message
 
-    # Gets the function response from the run
-    def get_function_response(tool_call):
-        name = tool_call.function.name
-        function_response = json.loads(tool_call.function.arguments)
-        return function_response
-
-    # Get the response from the function
-    def get_work_response(self, run):
-        # Get the function response from the run
-        tool_call = run.required_action.submit_tool_outputs.tool_calls[0]
-        function_response = self.get_function_response(tool_call)
-        return tool_call, function_response
-
     # Completes a task
-    def finish(self, run, thread, tool_call, output_text):
+    def finish(self, run, thread, tool_calls, tool_responses):
+        # Build tool outputs
+        tool_outputs = []
+        i = 0
+        for tool_call in tool_calls:
+            tool_outputs.append({"tool_call_id": tool_call.id, "output": tool_responses[i],})
+            i = i + 1 # increment responses tool_index
+
+        # Submit the tool outputs to the assistant
         run = self.client.beta.threads.runs.submit_tool_outputs(
             thread_id=thread.id,
             run_id=run.id,
-            tool_outputs=[
-                {
-                    # Specify the tool to call and the final user response
-                    # (this can be a second call back to the assistant for more info)
-                    "tool_call_id": tool_call.id,
-                    "output": output_text,
-                }
-            ],
+            tool_outputs=tool_outputs
         )
+
+        # # Submit the tool outputs to the assistant
+        # run = self.client.beta.threads.runs.submit_tool_outputs(
+        #     thread_id=thread.id,
+        #     run_id=run.id,
+        #     tool_outputs=[
+        #         {
+        #             # Specify the tool to call and the final user response
+        #             # (this can be a second call back to the assistant for more info)
+        #             "tool_call_id": tool_call.id,
+        #             "output": json.dumps(output_text),
+        #         }
+        #     ],
+        # )
 
     def print(self, agent_list):
         # Get the name of the agent
@@ -135,7 +143,7 @@ class Task:
         # List out the tasks and show where we are
         prompt = ""
         if self.id > 0:
-            prompt = f"Here is the overall plan for the entire team:"
+            prompt = "Here is the overall plan for the entire team:"
             for task in self.parent:
                 # Ignore the first task (decomposition)
                 if task.id > 0:
@@ -159,9 +167,31 @@ class Task:
         run = self.wait_on_run(run, thread, 5)
 
         # Check if there was a function called
-        # Get the function response from the decomposer task run    
-        #tool_call, function_response = get_work_response(run)
+        # tool_calls, function_response = functions.get_work_response(run)
+        tool_calls = functions.get_tool_calls(run)
+        if tool_calls:
+            responses = []
+            for tool_call in tool_calls:
+                function_response = json.loads(tool_call.function.arguments)
+                # If research was called, then perform the research task
+                if tool_call.function.name == 'research':
+                    # if function called is 'research', then...
+                    # 1. search/download research.
+                    # 2. load research into assistant knowledge
+                    # 3. complete task from (original_search_request)
+                    # Submit the message to the assistant on the thread
+                    search_term = function_response["search_term"]
+                    response = f"Parse the attached files, and {self.description} - using search term '{search_term}'. If there are no files available, or there is no relavant information in the files provided, do your best to respond with information from your own memory."
+                    responses.append(response)
+                else: # If not research, then assume this was the decompose task
+                    responses.append("Looks good. Thank you.")
+            
+            # Finish the run
+            self.finish(run, thread, tool_calls, responses)
+            #run = self.submit_message(assistant.id, thread, research_prompt)
+            run = self.wait_on_run(run, thread, 5)
 
+        # Get task outcome and write to file
         task_outcome_message = self.get_latest_message(thread)
         self.outcome = task_outcome_message.content[0].text.value
         self.is_complete = True # Set the task to complete
