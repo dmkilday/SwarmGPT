@@ -1,0 +1,6 @@
+.env
+logs/*
+data/*
+arxiv_pdfs/*
+__pycache__/*
+shared/__pycache__/*
