@@ -1,6 +1,8 @@
+import json
+
 # Specify the function for the assistant to run
 decompose_and_assign = {
-    "name": "decompose_objective_and_assign_tasks",
+    "name": "decompose_and_assign",
     "description": "Decomposes an objective into a list of subtasks. Then, create a list of agents to assign the subtasks to and make the assignments.",
     "parameters": {
         "type": "object",
@@ -63,3 +65,14 @@ research = {
         "required": ["original_search_request", "search_term"],
     },
 }
+
+# Get the response from the function
+def get_tool_calls(run):
+    # Create return vars and default to None
+    tool_calls = None
+
+    # Check if required action is not None and parse
+    if run.required_action:
+        tool_calls = run.required_action.submit_tool_outputs.tool_calls
+
+    return tool_calls
