@@ -1,22 +1,18 @@
 import time
-import json
 import utils
-import functions
 
 class Task:
-    def __init__(self, task_list, client, id, title, description, agent_id, dependent_upon=None, outcome=None):
-        self.parent = task_list
+    def __init__(self, client, log_file_path, id, title, description, agent_id, research_url, dependent_upon=None, outcome=None):
+        self.log_file_path = log_file_path
         self.client = client
         self.id = id
         self.title = title
         self.description = description
         self.assigned_agent = agent_id 
         self.dependent_upon = dependent_upon
+        self.research_url = research_url
         self.outcome = outcome
         self.is_complete = False
-
-        # Add self to parent task list
-        self.parent.append(self)
 
         print(f'Created task "{self.title}"')
 
@@ -57,14 +53,13 @@ class Task:
             time.sleep(wait_duration)
         return run
 
-    # Gets an assistant from a list of assistants by agent ID
-    def get_assistant(self, agents, agent_id):
+    # Gets an agent from the list of agents by agent ID
+    def get_agent(self, agents, agent_id):
 
         # Get the assistant from the agent
         for agent in agents:
             if agent.id == agent_id:
-                assistant = agent.assistant
-                return assistant
+                return agent
 
     # Aggregates all work done from the task list
     def aggregate_work(self, tasks, agents):
@@ -108,20 +103,6 @@ class Task:
             tool_outputs=tool_outputs
         )
 
-        # # Submit the tool outputs to the assistant
-        # run = self.client.beta.threads.runs.submit_tool_outputs(
-        #     thread_id=thread.id,
-        #     run_id=run.id,
-        #     tool_outputs=[
-        #         {
-        #             # Specify the tool to call and the final user response
-        #             # (this can be a second call back to the assistant for more info)
-        #             "tool_call_id": tool_call.id,
-        #             "output": json.dumps(output_text),
-        #         }
-        #     ],
-        # )
-
     def print(self, agent_list):
         # Get the name of the agent
         agent_name = ""
@@ -132,13 +113,13 @@ class Task:
 
         return f"\n\nTask ID: {self.id}, Title: {self.title}, Description: {self.description}, Assigned Agent: {agent_name}, Dependent Upon: {self.dependent_upon}\n\nTask Outcome:\n{self.outcome}"
 
-    def run(self, agents, log_file_path):
-        agent_id = self.assigned_agent
-        assistant = self.get_assistant(agents, agent_id)
+    def run(self, agents, log_file_path, knowledge_file_path):
+        # Get the assigned agent for this task 
+        agent = self.get_agent(agents, self.assigned_agent)
         prompt = ""
 
         # Aggregate previously completed work
-        previous_work = self.aggregate_work(self.parent, agents)
+        #previous_work = self.aggregate_work(self.parent, agents)
 
         # List out the tasks and show where we are
         prompt = ""
@@ -153,50 +134,53 @@ class Task:
                     prompt = prompt + task_text
 
         # Create prompt for task
-        if previous_work != "":
-            prompt = prompt + f"\n\nPrevious work completed: {previous_work}. Taking into account the previous work completed, complete the following task in a single request.\n\nTask Title: {self.title}\n\nTask Description: {self.description}\n\nIf there is code to be written, output the actual python code requested.\n\nAssuming I want you to proceed, do not prompt me for any further information."
-        else:
-            prompt = prompt + f"\n\nComplete the following task in a single request.\n\nTask Title: {self.title}\n\nTask Description: {self.description}\n\nIf there is code to be written, output the actual python code requested.\n\nAssuming I want you to proceed, do not prompt me for any further information."
+        prompt = f"\n\nComplete the following task in a single request.\n\nTask Title: {self.title}\n\nTask Description: {self.description}\n\nIf there is code to be written, output the actual python code requested.\n\nAssuming I want you to proceed, do not prompt me for any further information."
+        # if previous_work != "":
+        #     prompt = prompt + f"\n\nPrevious work completed: {previous_work}. Taking into account the previous work completed, complete the following task in a single request.\n\nTask Title: {self.title}\n\nTask Description: {self.description}\n\nIf there is code to be written, output the actual python code requested.\n\nAssuming I want you to proceed, do not prompt me for any further information."
+        # else:
+        #     prompt = prompt + f"\n\nComplete the following task in a single request.\n\nTask Title: {self.title}\n\nTask Description: {self.description}\n\nIf there is code to be written, output the actual python code requested.\n\nAssuming I want you to proceed, do not prompt me for any further information."
         
         # Run the thread to execute the task
         print()
-        print(f'{assistant.name} executing task #{self.id}: {self.title}...')
-        thread, run = self.create_thread_and_run(prompt, assistant.id)
+        print(f'{agent.assistant.name} executing task #{self.id}: {self.title}...')
+        thread, run = self.create_thread_and_run(prompt, agent.assistant.id)
 
         # Wait for run & print tasks outcome
         run = self.wait_on_run(run, thread, 5)
 
-        # Check if there was a function called
-        # tool_calls, function_response = functions.get_work_response(run)
-        tool_calls = functions.get_tool_calls(run)
-        if tool_calls:
-            responses = []
-            for tool_call in tool_calls:
-                function_response = json.loads(tool_call.function.arguments)
-                # If research was called, then perform the research task
-                if tool_call.function.name == 'research':
-                    # if function called is 'research', then...
-                    # 1. search/download research.
-                    # 2. load research into assistant knowledge
-                    # 3. complete task from (original_search_request)
-                    # Submit the message to the assistant on the thread
-                    search_term = function_response["search_term"]
-                    response = f"Parse the attached files, and {self.description} - using search term '{search_term}'. If there are no files available, or there is no relavant information in the files provided, do your best to respond with information from your own memory."
-                    responses.append(response)
-                else: # If not research, then assume this was the decompose task
-                    responses.append("Looks good. Thank you.")
+        # # Check if there was a function called
+        # tool_calls = functions.get_tool_calls(run)
+        # if tool_calls:
+        #     responses = []
+        #     for tool_call in tool_calls:
+        #         function_response = json.loads(tool_call.function.arguments)
+        #         # If research was called, then perform the research task
+        #         if tool_call.function.name == 'research':
+        #             # 1. search/download research.
+        #             search_term = function_response["search_term"]
+        #             search_tree = agent.research.search(search_term, 5)
+        #             agent.research.download(search_tree)
+
+        #             # 2. load research into assistant knowledge
+
+        #             # 3. complete task from (original_search_request)
+        #             # Submit the message to the assistant on the thread
+                    
+        #             response = f"Parse the attached files, and {self.description} - using search term '{search_term}'. If there are no files available, or there is no relavant information in the files provided, do your best to respond with information from your own memory."
+        #             responses.append(response)
+        #         else: # If not research, then assume this was the decompose task
+        #             responses.append("Looks good. Thank you.")
             
-            # Finish the run
-            self.finish(run, thread, tool_calls, responses)
-            #run = self.submit_message(assistant.id, thread, research_prompt)
-            run = self.wait_on_run(run, thread, 5)
+        #     # Finish the run
+        #     self.finish(run, thread, tool_calls, responses)
+        #     run = self.wait_on_run(run, thread, 5)
 
         # Get task outcome and write to file
         task_outcome_message = self.get_latest_message(thread)
         self.outcome = task_outcome_message.content[0].text.value
         self.is_complete = True # Set the task to complete
         file_name = (f'{thread.id}_{self.id}.{self.title}.txt').replace(' ', '_')
-        utils.write_to_file(f'{log_file_path}/{file_name}', self.outcome)
+        utils.write_to_file(f'{self.log_file_path}/{file_name}', self.outcome)
         print()
         print(f'{self.print(agents)}')
 

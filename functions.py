@@ -1,5 +1,3 @@
-import json
-
 # Specify the function for the assistant to run
 decompose_and_assign = {
     "name": "decompose_and_assign",

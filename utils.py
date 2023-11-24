@@ -43,3 +43,22 @@ def get_file_paths(directory_path, extension_filter=None):
                 file_paths.append(file_path)                 
     
     return file_paths
+
+# Get files to load into knowledge base
+def get_knowledge_base(client, file_path, extension_filter=None):
+    
+    # Get list of files from specified directory
+    file_paths = get_file_paths(file_path, extension_filter)
+    
+    # Create Assistant API client files and add to list
+    file_ids = []
+    for file_path in file_paths:
+        file = client.files.create(
+        file=open(
+            file_path,
+            "rb",
+        ),
+        purpose="assistants",)
+        file_ids.append(file.id)
+
+    return file_ids

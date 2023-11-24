@@ -11,7 +11,7 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args": ["Write a research paper on the 7 churches specified in Revelation, how they are are an end-times prophecy for churches throughout history to current day."] // Add your command line arguments here
+            "args": ["Simple Task", "List historical technology revolutions and a brief description of each."] // Add your command line arguments here
         }
     ]
 }
