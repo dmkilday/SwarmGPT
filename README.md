@@ -11,13 +11,14 @@ Welcome to the Swarm Project! This is a Python-based program designed to handle 
 4. **`research.py`**: Handles research-related functionalities, including API interactions for data retrieval (e.g., querying the arXiv API for research papers).
 5. **`task.py`**: Defines the `Task` class, used for managing tasks, including their creation, assignment, and tracking.
 6. **`utils.py`**: Provides utility functions such as `write_to_file`, useful for file operations.
-7. **`swarm.py`**: The main script of the project, responsible for initializing and orchestrating the interaction between different components like tasks, agents, and research functions.
+7. **`swarm.py`**: The main script of the project, responsible for initializing the first agent and assigning the primary objective.
 8. **`requirements.txt`**: Lists all the Python package dependencies for the project.
 9. **`template.env`**: A template for setting up environment variables, including the OpenAI API key. Make a copy of this to .env and add your OpenAI API key.
 
 ## Installation Instructions
-- Run python pip install -r requirements.txt
+- Make sure python is installed first
+- Run "python pip install -r requirements.txt" to install program dependencies
 - Copy template.env to .env and add your OpenAI API key
 
 ## Usage Instructions
-- Run python swarm.py and add a command line argument (in quotes) for the objective.
+- Run "python swarm.py" with the objective title and objective description command line arguments (in quotes).
