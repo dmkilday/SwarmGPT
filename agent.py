@@ -12,7 +12,7 @@ class Agent:
         self.data_file_path = data_file_path
         self.model = model
         self.research_url = research_url
-        self.parent = agent_list
+        self.agent_list = agent_list
         self.client = client
         self.id = id
         self.name = name
@@ -34,8 +34,8 @@ class Agent:
             file_ids=self.file_ids,
         )
         
-        # Add self to parent
-        self.parent.append(self)
+        # Add self to agent_list
+        self.agent_list.append(self)
 
         # Show agent creation success
         print(f'Created agent "{self.name}"')
@@ -82,17 +82,38 @@ class Agent:
             file_ids=self.file_ids,            
         )
 
-    # Assign task to this agent
-    def assign(self, task_title, task_description):
+    # Receive a task with just task title and task description (for top level task)
+    def receive_task_desc(self, task_title, task_description):
         
-        task_id = None
-
-        # Create a new task and add to agent's tasks
+        # Create a new task and assign to agent
         new_task = Task(self.client, self.log_file_path, 0, task_title, task_description, self.id, self.research.search_url)
         self.task_list.append(new_task)
-        task_id = new_task.id
 
-        return task_id
+        return new_task.id
+    
+    # Receive a task specification to create task and assign to agent
+    def receive_task_spec(self, task_spec):
+
+        # Create a new task and add to agent's task list
+        id = task_spec["subtask_id"]
+        title = task_spec["subtask_title"]
+        description = task_spec["subtask_description"]
+        assigned_agent_id = task_spec["assigned_agent_id"]
+        dependent_upon = task_spec.get("dependent_upon")
+        if not dependent_upon:
+            dependent_upon = "0"
+        new_task = Task(self.client,
+                    self.log_file_path,
+                    id, 
+                    title, 
+                    description, 
+                    assigned_agent_id, 
+                    self.research_url, 
+                    dependent_upon)
+
+        self.task_list.append(new_task)
+
+        return new_task.id
    
     # Have the agent start working on it's tasks
     def work(self, task_id):
@@ -112,9 +133,12 @@ class Agent:
     # Decompose and assign tasks
     def decompose_or_do(self, task):
         
+        # Determine if tasks is decomposable and set it in the task
+        self.set_decomposability(task)
+
         # Check if task is decomposable
-        if self.is_decomposable(task):
-            task_specs, agent_specs = self.get_decomposition(task.description, task.description, self)
+        if task.is_decomposable:
+            task_specs, agent_specs = self.get_subtask_agent_specs(task)
            
             #   Loop through task_specs and invoke delegation
             for task_spec in task_specs:
@@ -129,7 +153,7 @@ class Agent:
             self.do(task) 
 
     # Get the agent specification assigned to a task specification
-    def get_agent_spec(agent_specs, task_spec):
+    def get_agent_spec(self, agent_specs, task_spec):
 
         assigned_agent_spec = None
 
@@ -142,39 +166,47 @@ class Agent:
         return assigned_agent_spec
 
     # Check if a task is decomposable
-    def is_decomposable(self, task):
+    def set_decomposability(self, task):
 
         # Call OpenAI API function to determine if task is decomposable
-        # TODO: Call function
+        # Create the decomposability task and associate with parent task
+        title = "Get Decomposability"
+        description = f"Determine if the task '{task.description}' is decomposable into subtasks. If the task is decomposable, then also call the decompose_and_assign function. If the task is not decomposable, just call the decomposable function. In either case, make sure you call the decomposable function."
+        decomposability_task = Task(self.client, self.log_file_path, 0, title, description, self.id, self.research.search_url)
+        task.decomposability_task = decomposability_task
 
-        return False
+        # Run the decompose task
+        thread, run = decomposability_task.run(self.agent_list, self.log_file_path, self.data_file_path)
+
+        # Get the tool calls from the decompose task run    
+        tool_calls = functions.get_tool_calls(run)
+
+        # Set a reference to tool_calls in the task for future use
+        decomposability_task.tool_calls = tool_calls
+        
+        # Get the decomposability tool call
+        decomposability_tool_call = None
+        for tool_call in tool_calls:
+            if tool_call.function.name == functions.decomposability["name"]:
+                decomposability_tool_call = tool_call
+                break
+
+        # Confirm reciept of is_decomposable tool call
+        decomposability_task.finish(run, thread, decomposability_tool_call, "Completed." )  
+
+        # Set the decomposability (True or False) on the task
+        decomposable_result = json.loads(decomposability_tool_call.function.arguments)
+        task.is_decomposable = decomposable_result["is_decomposable"]
 
     # Identify delegate and assign task 
     def delegate(self, agent_spec, task_spec):
-
-        # Create task
-        id = task_spec["subtask_id"]
-        title = task_spec["subtask_title"]
-        description = task_spec["subtask_description"]
-        assigned_agent_id = task_spec["assigned_agent_id"]
-        dependent_upon = task_spec.get("dependent_upon")
-        if not dependent_upon:
-            dependent_upon = "0"
-        task = Task(self.client,
-                    self.log_file_path,
-                    id, 
-                    title, 
-                    description, 
-                    assigned_agent_id, 
-                    self.research_url, 
-                    dependent_upon)
         
         # Create agent
         agent_id = agent_spec["agent_id"]
         agent_name = agent_spec["agent_name"]
         agent_instructions = agent_spec["agent_instructions"]
         agent_tools = [enums.Tool.RETRIEVAL, enums.Tool.CODE_INTERPRETER]
-        function_list = [functions.research]
+        function_list = [functions.research, functions.decomposability, functions.decompose_and_assign]
         agent = Agent(self.log_file_path, 
                       self.data_file_path, 
                       self.model, 
@@ -188,37 +220,38 @@ class Agent:
                       agent_tools, 
                       function_list, 
                       self.file_ids)
+    
+        # Assign task specification to agent
+        task_id = agent.receive_task_spec(task_spec)
 
-        # Assign task to agent and initiate work
-        agent.assign(task)
-        agent.work()
+        # Initiate agent work on task
+        agent.work(task_id)
 
     # Do the assigned task
     def do(self, task):
 
         # Run the decompose task
-        thread, run = task.run(self.parent, self.log_file_path, self.data_file_path)
+        thread, run = task.run(self.agent_list, self.log_file_path, self.data_file_path)
 
         # # Get the tool call and function response from the decomposer task run    
         # tool_calls = functions.get_tool_calls(run)
         # decompose_tool_call = tool_calls[0] # tool_calls[0] assumes we're closing the first tool call.
         # function_response = json.loads(decompose_tool_call.function.arguments)
 
-    # Decompose the objective into subtasks and agent assignments
-    def get_decomposition(self, tasks, objective, decomposer):
-        # Create the decompose task 
-        title = "Decompose Objective"
-        description = f"Decompose following objective into a list of subtasks, agents to complete the work, and assignments. The objective is '{objective}'.\n\nDon't prompt me if I want to proceed, just assume I do."
-        decompose_task = Task(tasks, self.client, 0, title, description, decomposer.id, self.research.search_url)
+    # Get the subtask and agent specifications
+    def get_subtask_agent_specs(self, task):
 
-        # Run the decompose task
-        thread, run = decompose_task.run(self.parent, self.log_file_path)
+        # Get the decomposability tool call
+        decompose_tool_call = None
+        decomposability_task = task.decomposability_task
+        for tool_call in decomposability_task.tool_calls:
+            if tool_call.function.name == functions.decompose_and_assign["name"]:
+                decompose_tool_call = tool_call
+                break 
 
-        # Get the tool call and function response from the decomposer task run    
-        tool_calls = functions.get_tool_calls(run)
-        decompose_tool_call = tool_calls[0] # tool_calls[0] assumes we're closing the first tool call.
+        # Get the function response from the decompose tool call
         function_response = json.loads(decompose_tool_call.function.arguments)
-        
+
         # Return subtasks and agent specifications
         return function_response["subtasks"], function_response["agents"]
 

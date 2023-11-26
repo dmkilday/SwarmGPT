@@ -1,5 +1,6 @@
 import os
 import sys
+import argparse
 import enums
 import utils
 import functions
@@ -23,10 +24,10 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 # Creates an agent to decompose an objective into subtasks
 def create_top_agent(agents, client, ASSISTANT_MODEL, file_ids, research):
     agent_id = 0
-    agent_name = "Objective Decomposer"
-    agent_instructions = "You are an expert decomposer. You decompose objectives into subtasks, create agents, and assign the subtasks to the agents."
+    agent_name = "Helpful Agent"
+    agent_instructions = "You are a helpful agent assisting me in completing the assigned task."
     agent_tools = [enums.Tool.RETRIEVAL]
-    function_list = [functions.decompose_and_assign]
+    function_list = [functions.decomposability, functions.decompose_and_assign]
     decomposer = Agent(LOG_FILE_PATH, 
                        DATA_FILE_PATH,
                        ASSISTANT_MODEL,
@@ -43,8 +44,8 @@ def create_top_agent(agents, client, ASSISTANT_MODEL, file_ids, research):
     
     return decomposer
 
-# Main entry point of the program
-def main():
+# Get the title and description arguments
+def get_args():
 
     # Get objective from command line
     if len(sys.argv) > 2:
@@ -55,6 +56,11 @@ def main():
         print("You must enter an objective to proceed. Please try again.")
         exit
 
+    return objective_title, objective_description 
+
+# Main entry point of the program
+def main():
+    
     # Get knowledge base files & create empty containers
     print("\nGathering knowledge base files...")
     research = Research(DATA_FILE_PATH, RESEARCH_URL)
@@ -66,8 +72,9 @@ def main():
     top_agent = create_top_agent(agents, client, ASSISTANT_MODEL, file_ids, research)
 
     # Assign objective to agent
-    print("\nAssigning task to top agent...")       
-    task_id = top_agent.assign(objective_title, objective_description)
+    print("\nAssigning task to top agent...")
+    objective_title, objective_description = get_args()
+    task_id = top_agent.receive_task_desc(objective_title, objective_description)
 
     # Have agent start work on the task assigned
     print("\nInitiate work on the assigned task...") 

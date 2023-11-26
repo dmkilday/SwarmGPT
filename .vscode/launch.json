@@ -11,7 +11,7 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args": ["Simple Task", "List historical technology revolutions and a brief description of each."] // Add your command line arguments here
+            "args": ["Israeli-Palistinian Peace Plan", "Identify the optimal Israeli-Palistinian peace plan with 10 points."] // Add your command line arguments here
         }
     ]
 }

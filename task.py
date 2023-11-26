@@ -12,6 +12,9 @@ class Task:
         self.dependent_upon = dependent_upon
         self.research_url = research_url
         self.outcome = outcome
+        self.decomposability_task = None
+        self.tool_calls = None
+        self.is_decomposable = None
         self.is_complete = False
 
         print(f'Created task "{self.title}"')
@@ -88,13 +91,15 @@ class Task:
         return latest_message
 
     # Completes a task
-    def finish(self, run, thread, tool_calls, tool_responses):
+    def finish(self, run, thread, tool_call, tool_response):
         # Build tool outputs
         tool_outputs = []
-        i = 0
-        for tool_call in tool_calls:
-            tool_outputs.append({"tool_call_id": tool_call.id, "output": tool_responses[i],})
-            i = i + 1 # increment responses tool_index
+        for tc in self.tool_calls:
+            if (tc.id == tool_call.id):
+                tool_outputs.append({"tool_call_id": tc.id, "output": tool_response,})
+            else:
+                # Set other tool calls to pending
+                tool_outputs.append({"tool_call_id": tc.id, "output": "Pending...",})
 
         # Submit the tool outputs to the assistant
         run = self.client.beta.threads.runs.submit_tool_outputs(

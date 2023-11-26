@@ -64,6 +64,18 @@ research = {
     },
 }
 
+decomposability = {
+    "name": "decomposability",
+    "description": "Identify if a task is decomposable into a list of subtasks or not.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "is_decomposable": {"type": "boolean"},
+        },
+        "required": ["is_decomposable"],
+    },
+}
+
 # Get the response from the function
 def get_tool_calls(run):
     # Create return vars and default to None
