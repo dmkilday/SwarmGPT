@@ -78,11 +78,12 @@ decomposability = {
 
 # Get the response from the function
 def get_tool_calls(run):
-    # Create return vars and default to None
-    tool_calls = None
+    if run.status == "failed":
+        print(f"Warning: Run failed with error: {run.last_error}")
+        return None
 
-    # Check if required action is not None and parse
-    if run.required_action:
-        tool_calls = run.required_action.submit_tool_outputs.tool_calls
+    if run.required_action is None:
+        print("Warning: No required action in the run")
+        return None
 
-    return tool_calls
+    return run.required_action.submit_tool_outputs.tool_calls

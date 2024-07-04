@@ -1,8 +1,10 @@
+import os
 import time
 import utils
+import threading
 
 class Task:
-    def __init__(self, client, log_file_path, id, title, description, agent_id, research_url, dependent_upon=None, outcome=None):
+    def __init__(self, client, log_file_path, id, title, description, agent_id, research_url, parent_task=None, dependent_upon=None, outcome=None):
         self.log_file_path = log_file_path
         self.client = client
         self.id = id
@@ -16,8 +18,11 @@ class Task:
         self.tool_calls = None
         self.is_decomposable = None
         self.is_complete = False
+        self.parent_task = parent_task
 
         print(f'Created task "{self.title}"')
+
+        self.lock = threading.Lock()
 
     # Add message to the assistant thread and create a run
     def submit_message(self, assistant_id, thread, user_message):
@@ -119,74 +124,59 @@ class Task:
         return f"\n\nTask ID: {self.id}, Title: {self.title}, Description: {self.description}, Assigned Agent: {agent_name}, Dependent Upon: {self.dependent_upon}\n\nTask Outcome:\n{self.outcome}"
 
     def run(self, agents, log_file_path, knowledge_file_path):
-        # Get the assigned agent for this task 
-        agent = self.get_agent(agents, self.assigned_agent)
-        prompt = ""
-
-        # Aggregate previously completed work
-        #previous_work = self.aggregate_work(self.parent, agents)
-
-        # List out the tasks and show where we are
-        prompt = ""
-        if self.id > 0:
-            prompt = "Here is the overall plan for the entire team:"
-            for task in self.parent:
-                # Ignore the first task (decomposition)
-                if task.id > 0:
-                    task_text = f"\n{task.id}. {task.title}"
-                    if task.id == self.id:
-                        task_text = task_text + " <-- YOU ARE HERE"
-                    prompt = prompt + task_text
-
-        # Create prompt for task
-        prompt = f"\n\nComplete the following task in a single request.\n\nTask Title: {self.title}\n\nTask Description: {self.description}\n\nIf there is code to be written, output the actual python code requested.\n\nAssuming I want you to proceed, do not prompt me for any further information."
-        # if previous_work != "":
-        #     prompt = prompt + f"\n\nPrevious work completed: {previous_work}. Taking into account the previous work completed, complete the following task in a single request.\n\nTask Title: {self.title}\n\nTask Description: {self.description}\n\nIf there is code to be written, output the actual python code requested.\n\nAssuming I want you to proceed, do not prompt me for any further information."
-        # else:
-        #     prompt = prompt + f"\n\nComplete the following task in a single request.\n\nTask Title: {self.title}\n\nTask Description: {self.description}\n\nIf there is code to be written, output the actual python code requested.\n\nAssuming I want you to proceed, do not prompt me for any further information."
-        
-        # Run the thread to execute the task
-        print()
-        print(f'{agent.assistant.name} executing task #{self.id}: {self.title}...')
-        thread, run = self.create_thread_and_run(prompt, agent.assistant.id)
-
-        # Wait for run & print tasks outcome
-        run = self.wait_on_run(run, thread, 5)
-
-        # # Check if there was a function called
-        # tool_calls = functions.get_tool_calls(run)
-        # if tool_calls:
-        #     responses = []
-        #     for tool_call in tool_calls:
-        #         function_response = json.loads(tool_call.function.arguments)
-        #         # If research was called, then perform the research task
-        #         if tool_call.function.name == 'research':
-        #             # 1. search/download research.
-        #             search_term = function_response["search_term"]
-        #             search_tree = agent.research.search(search_term, 5)
-        #             agent.research.download(search_tree)
-
-        #             # 2. load research into assistant knowledge
-
-        #             # 3. complete task from (original_search_request)
-        #             # Submit the message to the assistant on the thread
-                    
-        #             response = f"Parse the attached files, and {self.description} - using search term '{search_term}'. If there are no files available, or there is no relavant information in the files provided, do your best to respond with information from your own memory."
-        #             responses.append(response)
-        #         else: # If not research, then assume this was the decompose task
-        #             responses.append("Looks good. Thank you.")
+        with self.lock:
+            agent = self.get_agent(agents, self.assigned_agent)
+            prompt = f"""
+            Complete the following task:
+            Task Title: {self.title}
+            Task Description: {self.description}
             
-        #     # Finish the run
-        #     self.finish(run, thread, tool_calls, responses)
-        #     run = self.wait_on_run(run, thread, 5)
+            If the task requires writing code, please provide the complete, runnable code.
+            For non-coding tasks, provide a detailed description or plan to accomplish the task.
+            
+            Begin your response now:
+            """
 
-        # Get task outcome and write to file
-        task_outcome_message = self.get_latest_message(thread)
-        self.outcome = task_outcome_message.content[0].text.value
-        self.is_complete = True # Set the task to complete
-        file_name = (f'{thread.id}_{self.id}.{self.title}.txt').replace(' ', '_')
-        utils.write_to_file(f'{self.log_file_path}/{file_name}', self.outcome)
-        print()
-        print(f'{self.print(agents)}')
+            print(f'\n{agent.assistant.name} executing task #{self.id}: {self.title}...')
+            thread, run = self.create_thread_and_run(prompt, agent.assistant.id)
 
-        return thread, run
+            run = self.wait_on_run(run, thread, 5)
+
+            task_outcome_message = self.get_latest_message(thread)
+            self.outcome = task_outcome_message.content[0].text.value
+            self.is_complete = True
+            
+            # Determine the appropriate file extension
+            file_extension = self.determine_file_extension(self.outcome)
+            
+            # Create a sanitized filename
+            sanitized_title = ''.join(c for c in self.title if c.isalnum() or c in (' ', '_')).rstrip()
+            file_name = f'{thread.id}_{self.id}.{sanitized_title}{file_extension}'
+            
+            # Ensure the log directory exists
+            os.makedirs(self.log_file_path, exist_ok=True)
+            
+            # Write the outcome to the file
+            file_path = os.path.join(self.log_file_path, file_name)
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(self.outcome)
+            
+            print(f'\nTask completed. Output written to {file_path}')
+            print(f'\n{self.print(agents)}')
+            
+            return thread, run
+
+    def determine_file_extension(self, content):
+        # Check if the content looks like code
+        code_indicators = ['import ', 'def ', 'class ', 'function', 'var ', 'let ', 'const ']
+        if any(indicator in content[:500] for indicator in code_indicators):
+            # Attempt to determine the language
+            if 'import' in content[:500] and ('def' in content or 'class' in content):
+                return '.py'
+            elif 'function' in content[:500] or 'var' in content[:500] or 'let' in content[:500] or 'const' in content[:500]:
+                return '.js'
+            # Add more language checks as needed
+            else:
+                return '.txt'  # Default to .txt if language can't be determined
+        else:
+            return '.txt'

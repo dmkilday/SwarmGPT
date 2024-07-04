@@ -1,23 +1,5 @@
 import os
 
-def write_to_file(file_path, content):
-    """
-    Writes the given content to a file at the specified file_path. Creates the
-    directory if it does not exist.
-    
-    :param file_path: str, the path to the file where the content will be written.
-    :param content: str, the content to write to the file.
-    """
-    try:
-        # Create the directory if it doesn't exist
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        
-        with open(file_path, 'w') as file:
-            file.write(content)
-        print(f"Content successfully written to {file_path}")
-    except IOError as e:
-        print(f"An error occurred while writing to the file: {e}")
-
 def get_file_paths(directory_path, extension_filter=None):
     # Check if the provided path is indeed a directory
     if not os.path.isdir(directory_path):

@@ -5,13 +5,38 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Current File",
+            "name": "Python: Run Swarm (Simple)",
             "type": "python",
             "request": "launch",
-            "program": "${file}",
+            "program": "swarm.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": ["Python Calculator App", "Write a python calculator app with a GUI."] // Add your command line arguments here
+        },
+        {
+            "name": "Python: Run Swarm (Hard)",
+            "type": "python",
+            "request": "launch",
+            "program": "swarm.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": ["Israeli-Palistinian Peace Plan", "Identify the optimal Israeli-Palistinian peace plan with 10 points."] // Add your command line arguments here
+        },
+        {
+            "name": "Python: Geaorg Washington Bio Test",
+            "type": "python",
+            "request": "launch",
+            "program": "swarm.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": ["George Washington Bio", "Write a short biography of George Washington."]
+        },
+        {
+            "name": "Python: Run Tests",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/run_tests.py",
+            "console": "integratedTerminal"
         }
     ]
 }
